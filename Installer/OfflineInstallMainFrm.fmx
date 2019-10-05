@@ -1,0 +1,133 @@
+object OfflineInstallMainForm: TOfflineInstallMainForm
+  Left = 0
+  Top = 0
+  BorderStyle = ToolWindow
+  Caption = '%s Offline Installer.'
+  ClientHeight = 513
+  ClientWidth = 614
+  Position = DesktopCenter
+  StyleBook = StyleDataModule.GlobalStyleBook
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  DesignerMasterStyle = 0
+  object InstallButton: TButton
+    Position.X = 16.000000000000000000
+    Position.Y = 128.000000000000000000
+    Size.Width = 113.000000000000000000
+    Size.Height = 25.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 1
+    Text = 'Install'
+    OnClick = InstallButtonClick
+  end
+  object InstallPathLayout: TLayout
+    Position.X = 16.000000000000000000
+    Position.Y = 80.000000000000000000
+    Size.Width = 585.000000000000000000
+    Size.Height = 41.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object Label2: TLabel
+      Align = Left
+      Size.Width = 89.000000000000000000
+      Size.Height = 41.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Intall directory'
+      TabOrder = 0
+    end
+    object InstallPathEdit: TEdit
+      Touch.InteractiveGestures = [LongTap, DoubleTap]
+      Align = VertCenter
+      TabOrder = 1
+      Position.X = 89.000000000000000000
+      Position.Y = 7.000000000000000000
+      Size.Width = 496.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TextPrompt = 'install to directory.'
+      object BrowseIntallPathButton: TEditButton
+        CanFocus = False
+        Cursor = crArrow
+        Size.Width = 28.000000000000000000
+        Size.Height = 22.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 0
+        Text = '..'
+        OnClick = BrowseIntallPathButtonClick
+      end
+    end
+  end
+  object fpsTimer: TTimer
+    Interval = 100
+    OnTimer = fpsTimerTimer
+    Left = 120
+    Top = 208
+  end
+  object ListBox: TListBox
+    Position.X = 16.000000000000000000
+    Position.Y = 160.000000000000000000
+    Size.Width = 585.000000000000000000
+    Size.Height = 321.000000000000000000
+    Size.PlatformDefault = False
+    StyleLookup = 'transparentlistboxstyle'
+    TabOrder = 4
+    DisableFocusEffect = True
+    DefaultItemStyles.ItemStyle = ''
+    DefaultItemStyles.GroupHeaderStyle = ''
+    DefaultItemStyles.GroupFooterStyle = ''
+    Viewport.Width = 585.000000000000000000
+    Viewport.Height = 321.000000000000000000
+  end
+  object InstallIconButton: TButton
+    Enabled = False
+    Position.X = 136.000000000000000000
+    Position.Y = 128.000000000000000000
+    Size.Width = 105.000000000000000000
+    Size.Height = 25.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 2
+    Text = 'Install shortcut'
+    TextSettings.FontColor = claLime
+    OnClick = InstallIconButtonClick
+  end
+  object UnInstallIconButton: TButton
+    Enabled = False
+    Position.X = 248.000000000000000000
+    Position.Y = 128.000000000000000000
+    Size.Width = 105.000000000000000000
+    Size.Height = 25.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 3
+    Text = 'UnInstall shortcut'
+    TextSettings.FontColor = claLime
+    OnClick = UnInstallIconButtonClick
+  end
+  object ProductNameLabel: TLabel
+    StyledSettings = [Family, Style]
+    Position.X = 16.000000000000000000
+    Position.Y = 24.000000000000000000
+    Size.Width = 369.000000000000000000
+    Size.Height = 41.000000000000000000
+    Size.PlatformDefault = False
+    TextSettings.Font.Size = 20.000000000000000000
+    TextSettings.FontColor = claLime
+    Text = 'Product name '
+    TabOrder = 7
+  end
+  object installerURLLabel: TLabel
+    StyledSettings = [Family, Size, Style]
+    HitTest = True
+    Opacity = 0.500000000000000000
+    Position.X = 352.000000000000000000
+    Position.Y = 488.000000000000000000
+    Size.Width = 249.000000000000000000
+    Size.Height = 17.000000000000000000
+    Size.PlatformDefault = False
+    TextSettings.FontColor = claLime
+    Text = 'https://github.com/PassByYou888/zInstaller'
+    TabOrder = 9
+    OnClick = installerURLLabelClick
+  end
+end

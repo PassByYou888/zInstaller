@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{77555B33-BF47-457D-8A6A-22E894F2B0BF}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="AutoBuildInstallerTools.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="OfflineInstaller.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="AutoBuildInstallerTools">
+        <MSBuild Projects="AutoBuildInstallerTools.dproj"/>
+    </Target>
+    <Target Name="AutoBuildInstallerTools:Clean">
+        <MSBuild Projects="AutoBuildInstallerTools.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AutoBuildInstallerTools:Make">
+        <MSBuild Projects="AutoBuildInstallerTools.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="OfflineInstaller">
+        <MSBuild Projects="OfflineInstaller.dproj"/>
+    </Target>
+    <Target Name="OfflineInstaller:Clean">
+        <MSBuild Projects="OfflineInstaller.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="OfflineInstaller:Make">
+        <MSBuild Projects="OfflineInstaller.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="AutoBuildInstallerTools;OfflineInstaller"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="AutoBuildInstallerTools:Clean;OfflineInstaller:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="AutoBuildInstallerTools:Make;OfflineInstaller:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
