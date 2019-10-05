@@ -10,6 +10,8 @@ zInstaller使用非常简单，对于delphi程序员无需安装三方控件，�
 
 
 使用指南
+
+
 https://github.com/PassByYou888/zInstaller/blob/master/Document/zInstaller%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.pdf
 
 
