@@ -117,6 +117,7 @@ type
     procedure Clear;
     procedure Append(t: TPascalString); overload;
     procedure Append(c: SystemChar); overload;
+    procedure Append(const Fmt: SystemString; const Args: array of const); overload;
     function GetString(bPos, ePos: NativeInt): TPascalString;
     procedure Insert(AText: SystemString; idx: Integer);
     procedure FastAsText(var output: SystemString);
@@ -134,6 +135,8 @@ type
 
     function BuildPlatformPChar: Pointer;
     class procedure FreePlatformPChar(p: Pointer); static;
+
+    class function RandomString(L_: Integer): TPascalString; static;
 
     { https://en.wikipedia.org/wiki/Smith%E2%80%93Waterman_algorithm }
     function SmithWaterman(const p: PPascalString): Double; overload;
@@ -1805,6 +1808,11 @@ begin
   buff[length(buff) - 1] := c;
 end;
 
+procedure TPascalString.Append(const Fmt: SystemString; const Args: array of const);
+begin
+  Append(PFormat(Fmt, Args));
+end;
+
 function TPascalString.GetString(bPos, ePos: NativeInt): TPascalString;
 begin
   if ePos > length(buff) then
@@ -1972,6 +1980,24 @@ begin
   FreeMemory(p);
 end;
 
+class function TPascalString.RandomString(L_: Integer): TPascalString;
+var
+  i: Integer;
+  c: SystemChar;
+  rnd: TMT19937Random;
+begin
+  Result.L := L_;
+  rnd := TMT19937Random.Create;
+  for i := 1 to L_ do
+    begin
+      repeat
+          c := SystemChar(rnd.Rand32(128));
+      until CharIn(c, [c0to9, cAtoZ]);
+      Result[i] := c;
+    end;
+  DisposeObject(rnd);
+end;
+
 function TPascalString.SmithWaterman(const p: PPascalString): Double;
 begin
   Result := SmithWatermanCompare(@Self, @p);
@@ -1990,9 +2016,5 @@ begin
   Result := SysUtils.TEncoding.UTF8.GetPreamble + GetBytes;
 {$ENDIF}
 end;
-
-initialization
-
-finalization
 
 end.

@@ -1,9 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<BorlandProject>
-  <Transactions>
-    <Transaction>2019/10/05 14:16:33.594,E:\developer\git\zInstaller\Installer\Installer.groupproj=C:\Users\Administrator\Documents\Embarcadero\Studio\Projects\ProjectGroup1.groupproj</Transaction>
-  </Transactions>
-  <Default.Personality>
-    <Projects ActiveProject="E:\developer\git\zInstaller\Installer\OfflineInstaller.dproj"/>
-  </Default.Personality>
-</BorlandProject>
