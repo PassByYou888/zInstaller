@@ -23,7 +23,7 @@
 
 unit FilePackage;
 
-{$INCLUDE zDefine.inc}
+{$INCLUDE ..\zDefine.inc}
 
 interface
 

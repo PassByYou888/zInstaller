@@ -1,16 +1,69 @@
+{$IFDEF SystemParallel}
+
+
+procedure DelphiParallelFor(parallel: Boolean; b, e: Integer; OnFor: TDelphiParallelForProcedure32);
+var
+  i_: Integer;
+begin
+  if b > e then
+      exit;
+  if (not parallel) or (not WorkInParallelCore.V) or ParallelOverflow.Busy() then
+    begin
+      i_ := b;
+      while i_ <= e do
+        begin
+          OnFor(i_);
+          inc(i_);
+        end;
+      exit;
+    end;
+  ParallelOverflow.Acquire;
+  try
+      TParallel.&For(b, e, OnFor);
+  finally
+      ParallelOverflow.Release;
+  end;
+end;
+
+procedure DelphiParallelFor(parallel: Boolean; b, e: Int64; OnFor: TDelphiParallelForProcedure64);
+var
+  i_: Int64;
+begin
+  if b > e then
+      exit;
+  if (not parallel) or (not WorkInParallelCore.V) or ParallelOverflow.Busy() then
+    begin
+      i_ := b;
+      while i_ <= e do
+        begin
+          OnFor(i_);
+          inc(i_);
+        end;
+      exit;
+    end;
+  ParallelOverflow.Acquire;
+  try
+      TParallel.&For(b, e, OnFor);
+  finally
+      ParallelOverflow.Release;
+  end;
+end;
+{$ELSE SystemParallel}
+
+
 type
-  TFPCParallelThData32 = record
+  TDelphiParallelThData32 = record
     b, e: Integer;
     Completed: ^Integer;
-    OnFor: TFPCParallelForProcedure32;
+    OnFor: TDelphiParallelForProcedure32;
     Critical: TCritical;
   end;
 
-  PFPCParallelThData32 = ^TFPCParallelThData32;
+  PDelphiParallelThData32 = ^TDelphiParallelThData32;
 
-procedure FPCParallelTh32(ThSender: TComputeThread);
+procedure DelphiParallelTh32(ThSender: TComputeThread);
 var
-  p: PFPCParallelThData32;
+  p: PDelphiParallelThData32;
   Pass: Integer;
 begin
   p := ThSender.UserData;
@@ -27,10 +80,10 @@ begin
   dispose(p);
 end;
 
-procedure FPCParallelFor(parallel: Boolean; OnFor: TFPCParallelForProcedure32; b, e: Integer);
+procedure DelphiParallelFor(parallel: Boolean; b, e: Integer; OnFor: TDelphiParallelForProcedure32);
 var
   Total, Depth, Completed, StepTotal, stepW, Pass, w: Integer;
-  p: PFPCParallelThData32;
+  p: PDelphiParallelThData32;
   i_: Integer;
   Critical: TCritical;
 begin
@@ -68,7 +121,7 @@ begin
             p^.Completed := @Completed;
             p^.OnFor := OnFor;
             p^.Critical := Critical;
-            TComputeThread.RunC(p, nil, @FPCParallelTh32);
+            TComputeThread.RunC(p, nil, DelphiParallelTh32);
             inc(Pass);
           end;
       end
@@ -97,7 +150,7 @@ begin
             p^.Completed := @Completed;
             p^.OnFor := OnFor;
             p^.Critical := Critical;
-            TComputeThread.RunC(p, nil, @FPCParallelTh32);
+            TComputeThread.RunC(p, nil, DelphiParallelTh32);
             inc(Pass);
           end;
       end;
@@ -116,18 +169,18 @@ begin
 end;
 
 type
-  TFPCParallelThData64 = record
+  TDelphiParallelThData64 = record
     b, e: Int64;
     Completed: ^Int64;
-    OnFor: TFPCParallelForProcedure64;
+    OnFor: TDelphiParallelForProcedure64;
     Critical: TCritical;
   end;
 
-  PFPCParallelThData64 = ^TFPCParallelThData64;
+  PDelphiParallelThData64 = ^TDelphiParallelThData64;
 
-procedure FPCParallelTh64(ThSender: TComputeThread);
+procedure DelphiParallelTh64(ThSender: TComputeThread);
 var
-  p: PFPCParallelThData64;
+  p: PDelphiParallelThData64;
   Pass: Int64;
 begin
   p := ThSender.UserData;
@@ -144,10 +197,10 @@ begin
   dispose(p);
 end;
 
-procedure FPCParallelFor(parallel: Boolean; OnFor: TFPCParallelForProcedure64; b, e: Int64);
+procedure DelphiParallelFor(parallel: Boolean; b, e: Int64; OnFor: TDelphiParallelForProcedure64);
 var
   Total, Depth, Completed, StepTotal, stepW, Pass, w: Int64;
-  p: PFPCParallelThData64;
+  p: PDelphiParallelThData64;
   i_: Int64;
   Critical: TCritical;
 begin
@@ -185,7 +238,7 @@ begin
             p^.Completed := @Completed;
             p^.OnFor := OnFor;
             p^.Critical := Critical;
-            TComputeThread.RunC(p, nil, @FPCParallelTh64);
+            TComputeThread.RunC(p, nil, DelphiParallelTh64);
             inc(Pass);
           end;
       end
@@ -214,7 +267,7 @@ begin
             p^.Completed := @Completed;
             p^.OnFor := OnFor;
             p^.Critical := Critical;
-            TComputeThread.RunC(p, nil, @FPCParallelTh64);
+            TComputeThread.RunC(p, nil, DelphiParallelTh64);
             inc(Pass);
           end;
       end;
@@ -232,32 +285,35 @@ begin
   end;
 end;
 
-procedure FPCParallelFor(OnFor: TFPCParallelForProcedure32; b, e: Integer);
+{$ENDIF SystemParallel}
+
+
+procedure DelphiParallelFor(b, e: Integer; OnFor: TDelphiParallelForProcedure32);
 begin
-  FPCParallelFor(True, OnFor, b, e);
+  DelphiParallelFor(True, b, e, OnFor);
 end;
 
-procedure FPCParallelFor(OnFor: TFPCParallelForProcedure64; b, e: Int64);
+procedure DelphiParallelFor(b, e: Int64; OnFor: TDelphiParallelForProcedure64);
 begin
-  FPCParallelFor(True, OnFor, b, e);
+  DelphiParallelFor(True, b, e, OnFor);
 end;
 
-procedure FPCParallelFor(b, e: Integer; OnFor: TFPCParallelForProcedure32);
+procedure DelphiParallelFor(OnFor: TDelphiParallelForProcedure32; b, e: Integer);
 begin
-  FPCParallelFor(OnFor, b, e);
+  DelphiParallelFor(b, e, OnFor);
 end;
 
-procedure FPCParallelFor(b, e: Int64; OnFor: TFPCParallelForProcedure64);
+procedure DelphiParallelFor(OnFor: TDelphiParallelForProcedure64; b, e: Int64);
 begin
-  FPCParallelFor(OnFor, b, e);
+  DelphiParallelFor(b, e, OnFor);
 end;
 
-procedure FPCParallelFor(parallel: Boolean; b, e: Integer; OnFor: TFPCParallelForProcedure32);
+procedure DelphiParallelFor(parallel: Boolean; OnFor: TDelphiParallelForProcedure32; b, e: Integer);
 begin
-  FPCParallelFor(parallel, OnFor, b, e);
+  DelphiParallelFor(parallel, b, e, OnFor);
 end;
 
-procedure FPCParallelFor(parallel: Boolean; b, e: Int64; OnFor: TFPCParallelForProcedure64);
+procedure DelphiParallelFor(parallel: Boolean; OnFor: TDelphiParallelForProcedure64; b, e: Int64);
 begin
-  FPCParallelFor(parallel, OnFor, b, e);
+  DelphiParallelFor(parallel, b, e, OnFor);
 end;

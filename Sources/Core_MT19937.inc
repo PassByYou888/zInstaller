@@ -29,19 +29,29 @@
 const
   MT19937N = 624;
   MT19937M = 397;
+  Mag01: array [0 .. 1] of Integer = (0, Integer($9908B0DF));
+  MT19937UPPER_MASK = Integer($80000000); // most significant r/w bits
+  MT19937LOWER_MASK = Integer($7FFFFFFF); // least significant r bits
+  TEMPERING_MASK_B = Integer($9D2C5680);
+  TEMPERING_MASK_C = Integer($EFC60000);
+
+type
+  TMTVector = array [0 .. MT19937N - 1] of Integer;
 
 type
   TMT19937Core = record
-    MT: array [0 .. MT19937N - 1] of Integer; // the array for the state vector
+    MT: TMTVector; // the array for the state vector
     MTI: Integer;
     InternalRndSeed, InternalOldRndSeed: Cardinal;
-    ThreadID: TThreadID;
+    Thread: TCoreClassThread;
     LastActivtedTime: TTimeTick;
     Busy: Boolean;
     Instance: Integer;
-    procedure BuildMT(Seed_: Cardinal);
+    procedure BuildMT(Seed_: Integer);
     function GenRand_MT19937(): Integer;
-    procedure Init(ThreadID_: TThreadID; LastActivtedTime_: TTimeTick);
+    procedure Init(Thread_: TCoreClassThread; LastActivtedTime_: TTimeTick);
+    procedure Serialize(stream: TCoreClassStream);
+    procedure Unserialize(stream: TCoreClassStream);
   end;
 
   PMD19937Core = ^TMT19937Core;
@@ -52,7 +62,7 @@ type
   end;
 
   { Initializing the array with a seed }
-procedure TMT19937Core.BuildMT(Seed_: Cardinal);
+procedure TMT19937Core.BuildMT(Seed_: Integer);
 var
   i: Integer;
 begin
@@ -69,12 +79,6 @@ begin
 end;
 
 function TMT19937Core.GenRand_MT19937(): Integer;
-const
-  Mag01: array [0 .. 1] of Integer = (0, Integer($9908B0DF));
-  MT19937UPPER_MASK = Integer($80000000); // most significant r/w bits
-  MT19937LOWER_MASK = Integer($7FFFFFFF); // least significant r bits
-  TEMPERING_MASK_B = Integer($9D2C5680);
-  TEMPERING_MASK_C = Integer($EFC60000);
 var
   th: TCoreClassThread;
   Y, K: Integer;
@@ -89,7 +93,7 @@ begin
       if MTI = (MT19937N + 1) then
         begin
           { default initial seed is used }
-          BuildMT(InternalRndSeed);
+          BuildMT(Integer(InternalRndSeed));
 
           { hack: InternalRndSeed is not used more than once in this algorithm. Most }
           { user changes are re-initialising reandseed with the value it had }
@@ -126,83 +130,125 @@ begin
   Result := Y;
 end;
 
-procedure TMT19937Core.Init(ThreadID_: TThreadID; LastActivtedTime_: TTimeTick);
+procedure TMT19937Core.Init(Thread_: TCoreClassThread; LastActivtedTime_: TTimeTick);
 begin
   InternalRndSeed := 0;
   InternalOldRndSeed := 0;
   BuildMT(0);
-  ThreadID := ThreadID_;
+  Thread := Thread_;
   LastActivtedTime := LastActivtedTime_;
   Busy := False;
   Instance := 0;
 end;
 
+procedure TMT19937Core.Serialize(stream: TCoreClassStream);
+begin
+  stream.WriteBuffer(MT[0], SizeOf(TMTVector));
+  stream.WriteBuffer(MTI, 4);
+  stream.WriteBuffer(InternalRndSeed, 4);
+  stream.WriteBuffer(InternalOldRndSeed, 4);
+end;
+
+procedure TMT19937Core.Unserialize(stream: TCoreClassStream);
+begin
+  stream.ReadBuffer(MT[0], SizeOf(TMTVector));
+  stream.ReadBuffer(MTI, 4);
+  stream.ReadBuffer(InternalRndSeed, 4);
+  stream.ReadBuffer(InternalOldRndSeed, 4);
+end;
+
 var
   MT19937InternalCritical: TCritical;
   MT19937POOL: TMT19937List;
+  MT19937CoreToDelphi_: Boolean;
 
-function MT19937(): PMD19937Core;
+function InternalMT19937__(): PMD19937Core;
 var
-  tk: TTimeTick;
-  thID: TThreadID;
+  th: TCoreClassThread;
+  i: Integer;
+  p: PMD19937Core;
+begin
+  th := TCoreClassThread.CurrentThread;
+  Result := nil;
+
+  MT19937InternalCritical.Acquire;
+
+  i := 0;
+  while i < MT19937POOL.Count do
+    begin
+      p := MT19937POOL[i];
+      if p^.Thread = th then
+        begin
+          if i > 0 then
+              MT19937POOL.Exchange(0, i);
+          p^.LastActivtedTime := GetTimeTick;
+          Result := p;
+          inc(i);
+        end
+      else if (not p^.Busy) and (p^.Instance <= 0) and (GetTimeTick - p^.LastActivtedTime > MT19937LifeTime) then
+        begin
+          dispose(p);
+          MT19937POOL.Delete(i);
+        end
+      else
+          inc(i);
+    end;
+
+  if Result = nil then
+    begin
+      New(p);
+      p^.Init(th, GetTimeTick);
+      MT19937POOL.Add(p);
+      Result := p;
+    end;
+
+  MT19937InternalCritical.Release;
+end;
+
+procedure RemoveMT19937Thread(th: TCoreClassThread);
+var
   i: Integer;
   p: PMD19937Core;
 begin
   MT19937InternalCritical.Acquire;
-  try
-    Result := nil;
-    tk := GetTimeTick;
-    thID := TCoreClassThread.CurrentThread.ThreadID;
-    i := 0;
-    while i < MT19937POOL.Count do
-      begin
-        p := MT19937POOL[i];
-        if p^.ThreadID = thID then
-          begin
-            if i > 0 then
-                MT19937POOL.Exchange(0, i);
-            p^.LastActivtedTime := tk;
-            Result := p;
-            inc(i);
-          end
-        else if (not p^.Busy) and (p^.Instance <= 0) and (tk - p^.LastActivtedTime > MT19937LifeCycle) then
-          begin
-            dispose(p);
-            MT19937POOL.Delete(i);
-          end
-        else
-            inc(i);
-      end;
-    if Result = nil then
-      begin
-        New(p);
-        p^.Init(thID, tk);
-        MT19937POOL.Add(p);
-        Result := p;
-      end;
-  finally
-      MT19937InternalCritical.Release;
-  end;
+  i := 0;
+  while i < MT19937POOL.Count do
+    begin
+      p := MT19937POOL[i];
+      if (p^.Thread = th) or
+        ((not p^.Busy) and (p^.Instance <= 0) and (GetTimeTick - p^.LastActivtedTime > MT19937LifeTime)) then
+        begin
+          dispose(p);
+          MT19937POOL.Delete(i);
+        end
+      else
+          inc(i);
+    end;
+  MT19937InternalCritical.Release;
 end;
 
 {$IFDEF DELPHI}
 
+{$IFDEF InstallMT19937CoreToDelphi}
+
 
 function DelphiRandom32Proc: UInt32;
 begin
-  Result := UInt32(MT19937()^.GenRand_MT19937());
+  Result := UInt32(InternalMT19937__()^.GenRand_MT19937());
 end;
 
 procedure DelphiRandomizeProc(NewSeed: UInt64);
 begin
-  MT19937()^.InternalRndSeed := Cardinal(NewSeed);
+  InternalMT19937__()^.InternalRndSeed := Cardinal(NewSeed);
 end;
 
 procedure MT19937Install();
 begin
   Random32Proc := DelphiRandom32Proc;
   RandomizeProc := DelphiRandomizeProc;
+  MT19937CoreToDelphi_ := True;
 end;
+{$ENDIF InstallMT19937CoreToDelphi}
 
 {$ENDIF DELPHI}
 
@@ -211,12 +257,14 @@ procedure InitMT19937Rand;
 begin
   MT19937InternalCritical := TCritical.Create;
   MT19937POOL := TMT19937List.Create;
+  MT19937CoreToDelphi_ := False;
 
 {$IFDEF DELPHI}
 {$IFDEF InstallMT19937CoreToDelphi}
   MT19937Install();
 {$ENDIF InstallMT19937CoreToDelphi}
 {$ENDIF DELPHI}
+  MT19937LifeTime := 10 * 1000;
 end;
 
 procedure FreeMT19937Rand;
@@ -231,9 +279,13 @@ begin
   MT19937InternalCritical := nil;
 end;
 
+function MT19937CoreToDelphi: Boolean;
+begin
+  Result := MT19937CoreToDelphi_;
+end;
+
 function MT19937InstanceNum(): Integer;
 begin
-  MT19937();
   MT19937InternalCritical.Acquire;
   Result := MT19937POOL.Count;
   MT19937InternalCritical.Release;
@@ -241,22 +293,26 @@ end;
 
 procedure SetMT19937Seed(seed: Integer);
 begin
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
+      MT19937InternalCritical.Acquire;
       InternalRndSeed := seed;
       InternalOldRndSeed := seed;
       BuildMT(seed);
+      Thread := TCoreClassThread.CurrentThread;
+      LastActivtedTime := GetTimeTick();
+      MT19937InternalCritical.Release;
     end;
 end;
 
 function GetMT19937Seed(): Integer;
 begin
-  Result := MT19937()^.InternalRndSeed;
+  Result := InternalMT19937__()^.InternalRndSeed;
 end;
 
 procedure MT19937Randomize();
 begin
-  MT19937()^.InternalRndSeed := Cardinal(GetTimeTick());
+  SetMT19937Seed(Integer(GetTimeTick()));
 end;
 
 function MT19937Rand32(L: Integer): Integer;
@@ -264,7 +320,7 @@ begin
   { otherwise we can return values = L (JM) }
   if (L < 0) then
       inc(L);
-  Result := Integer((Int64(Cardinal(MT19937()^.GenRand_MT19937())) * L) shr 32);
+  Result := Integer((Int64(Cardinal(InternalMT19937__()^.GenRand_MT19937())) * L) shr 32);
 end;
 
 procedure MT19937Rand32(L: Integer; dest: PInteger; num: NativeInt);
@@ -273,7 +329,7 @@ begin
   if (L < 0) then
       inc(L);
 
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
       Busy := True;
       try
@@ -293,7 +349,7 @@ end;
 function MT19937Rand64(L: Int64): Int64;
 begin
   { always call random, so the random generator cycles (TP-compatible) (JM) }
-  with MT19937()^ do
+  with InternalMT19937__()^ do
       Result := Int64((UInt64(Cardinal(GenRand_MT19937())) or ((UInt64(Cardinal(GenRand_MT19937())) shl 32))) and $7FFFFFFFFFFFFFFF);
   if (L <> 0) then
       Result := Result mod L
@@ -303,7 +359,7 @@ end;
 
 procedure MT19937Rand64(L: Int64; dest: PInt64; num: NativeInt);
 begin
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
       Busy := True;
       try
@@ -328,14 +384,14 @@ function MT19937RandE: Extended;
 const
   f = Extended(1.0) / (Int64(1) shl 32);
 begin
-  Result := f * Cardinal(MT19937()^.GenRand_MT19937());
+  Result := f * Cardinal(InternalMT19937__()^.GenRand_MT19937());
 end;
 
 procedure MT19937RandE(dest: PExtended; num: NativeInt);
 const
   f = Extended(1.0) / (Int64(1) shl 32);
 begin
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
       Busy := True;
       try
@@ -356,14 +412,14 @@ function MT19937RandF: Single;
 const
   f = Single(1.0) / (Int64(1) shl 32);
 begin
-  Result := f * Cardinal(MT19937()^.GenRand_MT19937());
+  Result := f * Cardinal(InternalMT19937__()^.GenRand_MT19937());
 end;
 
 procedure MT19937RandF(dest: PSingle; num: NativeInt);
 const
   f = Single(1.0) / (Int64(1) shl 32);
 begin
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
       Busy := True;
       try
@@ -384,14 +440,14 @@ function MT19937RandD: Double;
 const
   f = Double(1.0) / (Int64(1) shl 32);
 begin
-  Result := f * Cardinal(MT19937()^.GenRand_MT19937());
+  Result := f * Cardinal(InternalMT19937__()^.GenRand_MT19937());
 end;
 
 procedure MT19937RandD(dest: PDouble; num: NativeInt);
 const
   f = Double(1.0) / (Int64(1) shl 32);
 begin
-  with MT19937()^ do
+  with InternalMT19937__()^ do
     begin
       Busy := True;
       try
@@ -406,6 +462,16 @@ begin
         Busy := False;
       end;
     end;
+end;
+
+procedure MT19937SaveToStream(stream: TCoreClassStream);
+begin
+  InternalMT19937__()^.Serialize(stream);
+end;
+
+procedure MT19937LoadFromStream(stream: TCoreClassStream);
+begin
+  InternalMT19937__()^.Unserialize(stream);
 end;
 
 { ****************************************************************************** }
@@ -430,7 +496,7 @@ end;
 constructor TMT19937Random.Create;
 begin
   inherited Create;
-  FRndInstance := MT19937();
+  FRndInstance := InternalMT19937__();
   AtomInc(PMD19937Core(FRndInstance)^.Instance);
 end;
 

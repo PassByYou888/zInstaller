@@ -22,7 +22,7 @@
 *)
 unit FileIndexPackage;
 
-{$INCLUDE zDefine.inc}
+{$INCLUDE ..\zDefine.inc}
 
 interface
 

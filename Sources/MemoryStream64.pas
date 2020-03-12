@@ -32,10 +32,12 @@ unit MemoryStream64;
 interface
 
 uses
-  SysUtils, ZLib,
+  SysUtils,
 {$IFDEF FPC}
   zstream,
   FPCGenericStructlist,
+{$ELSE FPC}
+  ZLib,
 {$ENDIF}
   CoreClasses, PascalStrings, UnicodeMixedLib;
 
@@ -79,7 +81,8 @@ type
     function WritePtr(const p: Pointer; Count: Int64): Int64;
     function write(const buffer; Count: longint): longint; overload; override;
 {$IFNDEF FPC} function write(const buffer: TBytes; Offset, Count: longint): longint; overload; override; {$ENDIF}
-    //
+    procedure WriteBytes(const buff: TBytes);
+
     function Read64(var buffer; Count: Int64): Int64; virtual;
     function ReadPtr(const p: Pointer; Count: Int64): Int64;
     function read(var buffer; Count: longint): longint; overload; override;
@@ -104,6 +107,8 @@ type
     procedure WriteDouble(const buff: Double);
     procedure WriteCurrency(const buff: Currency);
     procedure WriteString(const buff: TPascalString);
+    procedure WriteANSI(const buff: TPascalString); overload;
+    procedure WriteANSI(const buff: TPascalString; const L: Integer); overload;
     procedure WriteMD5(const buff: TMD5);
 
     // Serialized reader
@@ -121,6 +126,7 @@ type
     function ReadCurrency: Currency;
     function PrepareReadString: Boolean;
     function ReadString: TPascalString;
+    function ReadANSI(L: Integer): TPascalString;
     function ReadMD5: TMD5;
   end;
 
@@ -214,13 +220,7 @@ procedure DoStatus(const v: TMemoryStream64); overload;
 
 implementation
 
-uses
-{$IFDEF parallel}
-{$IFNDEF FPC}
-  Threading,
-{$ENDIF FPC}
-{$ENDIF parallel}
-  SyncObjs, DoStatusIO, CoreCompress;
+uses DoStatusIO, CoreCompress;
 
 procedure TMemoryStream64.SetPointer(buffPtr: Pointer; const BuffSize: NativeUInt);
 begin
@@ -242,7 +242,7 @@ begin
       Exit(nil);
 
   if (NewCapacity > 0) and (NewCapacity <> FSize) then
-      NewCapacity := umlDeltaNumber(NewCapacity, FDelta);
+      NewCapacity := DeltaStep(NewCapacity, FDelta);
   Result := Memory;
   if NewCapacity <> FCapacity then
     begin
@@ -529,6 +529,12 @@ end;
 {$ENDIF}
 
 
+procedure TMemoryStream64.WriteBytes(const buff: TBytes);
+begin
+  if Length(buff) > 0 then
+      WritePtr(@buff[0], Length(buff));
+end;
+
 function TMemoryStream64.Read64(var buffer; Count: Int64): Int64;
 begin
   if Count > 0 then
@@ -599,7 +605,7 @@ const
   MaxBufSize = $F000;
 var
   BufSize, n: Int64;
-  buffer: TBytes;
+  buffer: PByte;
 begin
   if FProtectedMode then
       RaiseInfo('protected mode');
@@ -623,7 +629,8 @@ begin
       BufSize := MaxBufSize
   else
       BufSize := CCount;
-  SetLength(buffer, BufSize);
+
+  buffer := System.GetMemory(BufSize);
   try
     while CCount <> 0 do
       begin
@@ -631,12 +638,12 @@ begin
             n := BufSize
         else
             n := CCount;
-        source.read((@buffer[0])^, n);
-        WritePtr((@buffer[0]), n);
+        source.read(buffer^, n);
+        WritePtr(buffer, n);
         dec(CCount, n);
       end;
   finally
-      SetLength(buffer, 0);
+      System.FreeMem(buffer);
   end;
 end;
 
@@ -713,6 +720,30 @@ begin
     end;
 end;
 
+procedure TMemoryStream64.WriteANSI(const buff: TPascalString);
+var
+  b: TBytes;
+begin
+  b := buff.ANSI;
+  if Length(b) > 0 then
+    begin
+      WritePtr(@b[0], Length(b));
+      SetLength(b, 0);
+    end;
+end;
+
+procedure TMemoryStream64.WriteANSI(const buff: TPascalString; const L: Integer);
+var
+  b: TBytes;
+begin
+  b := buff.ANSI;
+  if L > 0 then
+    begin
+      WritePtr(@b[0], L);
+      SetLength(b, 0);
+    end;
+end;
+
 procedure TMemoryStream64.WriteMD5(const buff: TMD5);
 begin
   WritePtr(@buff, 16);
@@ -785,15 +816,28 @@ end;
 
 function TMemoryStream64.ReadString: TPascalString;
 var
-  l: Cardinal;
+  L: Cardinal;
   b: TBytes;
 begin
-  l := ReadUInt32;
-  if l > 0 then
+  L := ReadUInt32;
+  if L > 0 then
     begin
-      SetLength(b, l);
-      ReadPtr(@b[0], l);
+      SetLength(b, L);
+      ReadPtr(@b[0], L);
       Result.Bytes := b;
+      SetLength(b, 0);
+    end;
+end;
+
+function TMemoryStream64.ReadANSI(L: Integer): TPascalString;
+var
+  b: TBytes;
+begin
+  if L > 0 then
+    begin
+      SetLength(b, L);
+      ReadPtr(@b[0], L);
+      Result.ANSI := b;
       SetLength(b, 0);
     end;
 end;
@@ -1057,14 +1101,14 @@ var
   sourStrips: TStream64List;
   StripArry: array of TMemoryStream64;
 
-{$IFDEF parallel}
+{$IFDEF Parallel}
 {$IFDEF FPC}
-  procedure Nested_ParallelFor(pass: NativeInt);
+  procedure Nested_ParallelFor(pass: Integer);
   begin
     SelectCompressStream(scm, sourStrips[pass], StripArry[pass]);
   end;
 {$ENDIF FPC}
-{$ELSE parallel}
+{$ELSE Parallel}
   procedure DoFor;
   var
     pass: Integer;
@@ -1074,7 +1118,7 @@ var
         SelectCompressStream(scm, sourStrips[pass], StripArry[pass]);
       end;
   end;
-{$ENDIF parallel}
+{$ENDIF Parallel}
   procedure BuildBuff;
   var
     strip_siz, strip_m: Int64;
@@ -1113,13 +1157,13 @@ var
 
   procedure BuildOutput;
   var
-    l: Integer;
+    L: Integer;
     siz_: Int64;
     i: Integer;
   begin
-    l := Length(StripArry);
-    dest.write(l, 4);
-    for i := 0 to l - 1 do
+    L := Length(StripArry);
+    dest.write(L, 4);
+    for i := 0 to L - 1 do
       begin
         siz_ := StripArry[i].Size;
         dest.write(siz_, 8);
@@ -1140,21 +1184,21 @@ begin
   if StripNum_ <= 0 then
       StripNum := 1
   else
-    StripNum := StripNum_;
+      StripNum := StripNum_;
   BuildBuff;
 
-{$IFDEF parallel}
+{$IFDEF Parallel}
 {$IFDEF FPC}
   FPCParallelFor(@Nested_ParallelFor, 0, Length(StripArry) - 1);
 {$ELSE FPC}
-  TParallel.for(0, Length(StripArry) - 1, procedure(pass: Integer)
+  DelphiParallelFor(0, Length(StripArry) - 1, procedure(pass: Integer)
     begin
       SelectCompressStream(scm, sourStrips[pass], StripArry[pass]);
     end);
 {$ENDIF FPC}
-{$ELSE parallel}
+{$ELSE Parallel}
   DoFor;
-{$ENDIF parallel}
+{$ENDIF Parallel}
   BuildOutput;
   FreeBuff;
 end;
@@ -1179,14 +1223,14 @@ type
 var
   StripArry: array of TPara_strip_;
 
-{$IFDEF parallel}
+{$IFDEF Parallel}
 {$IFDEF FPC}
-  procedure Nested_ParallelFor(pass: NativeInt);
+  procedure Nested_ParallelFor(pass: Integer);
   begin
     SelectDecompressStream(StripArry[pass].sour, StripArry[pass].dest);
   end;
 {$ENDIF FPC}
-{$ELSE parallel}
+{$ELSE Parallel}
   procedure DoFor;
   var
     pass: Integer;
@@ -1196,7 +1240,7 @@ var
         SelectDecompressStream(StripArry[pass].sour, StripArry[pass].dest);
       end;
   end;
-{$ENDIF parallel}
+{$ENDIF Parallel}
   function BuildBuff_Stream64(stream: TMemoryStream64): Boolean;
   var
     strip_num: Integer;
@@ -1289,18 +1333,18 @@ begin
       Exit;
     end;
 
-{$IFDEF parallel}
+{$IFDEF Parallel}
 {$IFDEF FPC}
   FPCParallelFor(@Nested_ParallelFor, 0, Length(StripArry) - 1);
 {$ELSE FPC}
-  TParallel.for(0, Length(StripArry) - 1, procedure(pass: Integer)
+  DelphiParallelFor(0, Length(StripArry) - 1, procedure(pass: Integer)
     begin
       SelectDecompressStream(StripArry[pass].sour, StripArry[pass].dest);
     end);
 {$ENDIF FPC}
-{$ELSE parallel}
+{$ELSE Parallel}
   DoFor;
-{$ENDIF parallel}
+{$ENDIF Parallel}
   BuildOutput;
   FreeBuff;
 end;

@@ -24,7 +24,7 @@
 
 unit ObjectData;
 
-{$INCLUDE zDefine.inc}
+{$INCLUDE ..\zDefine.inc}
 
 interface
 
@@ -357,7 +357,7 @@ type
     SearchBuff: array [0 .. DB_Max_Secursion_Level] of TFieldSearch;
   end;
 
-  //internal used
+  // internal used
 function Get_DB_StringL(var IOHnd: TIOHnd): Integer;
 function Get_DB_HeaderL(var IOHnd: TIOHnd): Integer;
 function Get_DB_ItemL(var IOHnd: TIOHnd): Integer;
@@ -2851,8 +2851,8 @@ begin
       Result := False;
       exit;
     end;
-  Item_.CurrentBlockSeekPOS := 0;
-  Item_.CurrentFileSeekPOS := Item_.CurrentItemBlock.DataPosition;
+  Item_.CurrentBlockSeekPOS := Item_.CurrentItemBlock.Size;
+  Item_.CurrentFileSeekPOS := Item_.CurrentItemBlock.DataPosition + Item_.CurrentItemBlock.Size;
   Item_.State := DB_Item_ok;
   Result := True;
 end;
@@ -5790,7 +5790,6 @@ function db_GetPath(const FieldPos, RootFieldPos: Int64; var DB_: TObjectDataHan
 var
   f: TField;
 begin
-
   if dbHeader_ReadRec(FieldPos, DB_.IOHnd, f.RHeader) = False then
     begin
       DB_.State := f.RHeader.State;

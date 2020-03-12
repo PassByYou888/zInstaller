@@ -24,7 +24,7 @@
 
 unit ZDBEngine;
 
-{$INCLUDE zDefine.inc}
+{$INCLUDE ..\zDefine.inc}
 
 interface
 
@@ -304,13 +304,14 @@ type
   PQueryState = ^TQueryState;
 
   TQueryState = record
-    dbEng: TDBStoreBase;
+    Eng: TDBStoreBase;
     StorePos: Int64;
     QueryHnd: PHeader;
     index: NativeInt;
     TaskTag: SystemString;
     deltaTime, NewTime: TTimeTick;
     Aborted: Boolean;
+    property dbEng: TDBStoreBase read Eng;
 
     function ID: Cardinal;
     function IsDF: Boolean;
@@ -336,11 +337,15 @@ type
   TRemoveCall = procedure(StorePos: Int64; RemoveSuccesed: Boolean);
   TRemoveMethod = procedure(StorePos: Int64; RemoveSuccesed: Boolean) of object;
 
-{$IFNDEF FPC}
+{$IFDEF FPC}
+  TQueryProc = procedure(var qState: TQueryState) is nested;
+  TQueryDoneProc = procedure() is nested;
+  TRemoveProc = procedure(StorePos: Int64; RemoveSuccesed: Boolean) is nested;
+{$ELSE FPC}
   TQueryProc = reference to procedure(var qState: TQueryState);
   TQueryDoneProc = reference to procedure();
   TRemoveProc = reference to procedure(StorePos: Int64; RemoveSuccesed: Boolean);
-{$ENDIF}
+{$ENDIF FPC}
 
   TQueryTask = class(TCoreClassObject)
   protected
@@ -355,20 +360,12 @@ type
     FStoped, FPaused: Boolean;
     FProcessQueryDone: Boolean;
     FSyncTrigger: Boolean;
-
-{$IFDEF FPC}
-    FOnQueryCall: TQueryCall;
-    FOnQueryMethod: TQueryMethod;
-    FOnQueryDoneCall: TQueryDoneCall;
-    FOnQueryDoneMethod: TQueryDoneMethod;
-{$ELSE}
     FOnQueryCall: TQueryCall;
     FOnQueryMethod: TQueryMethod;
     FOnQueryProc: TQueryProc;
     FOnQueryDoneCall: TQueryDoneCall;
     FOnQueryDoneMethod: TQueryDoneMethod;
     FOnQueryDoneProc: TQueryDoneProc;
-{$ENDIF}
     procedure DoTriggerQuery;
     procedure DoQueryDone;
   public
@@ -388,7 +385,7 @@ type
   TRemoveQueueData = record
     OnRemoveCall: TRemoveCall;
     OnRemoveMethod: TRemoveMethod;
-{$IFNDEF FPC} OnRemoveProc: TRemoveProc; {$ENDIF FPC}
+    OnRemoveProc: TRemoveProc;
   end;
 
   TQueryThread = class(TCoreClassThread)
@@ -414,10 +411,10 @@ type
 
     procedure RemoveDeleteProc(p: Pointer);
 
-    procedure PostRemoveQueue(StorePos: Int64); overload;
-    procedure PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveCall); overload;
-    procedure PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveMethod); overload;
-{$IFNDEF FPC} procedure PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveProc); overload; {$ENDIF FPC}
+    procedure PostRemoveQueue(StorePos: Int64);
+    procedure PostRemoveQueueC(StorePos: Int64; OnRemove: TRemoveCall);
+    procedure PostRemoveQueueM(StorePos: Int64; OnRemove: TRemoveMethod);
+    procedure PostRemoveQueueP(StorePos: Int64; OnRemove: TRemoveProc);
   end;
 
   IDBStoreBaseNotify = interface
@@ -576,17 +573,6 @@ type
     procedure BuildStoreArray(ReverseBuild: Boolean; const OutputPtr: PStoreArray);
 
     // wait query
-{$IFDEF FPC}
-    procedure WaitQuery(ReverseQuery: Boolean;
-      const OnQueryCall: TQueryCall;
-      const OnQueryMethod: TQueryMethod); overload;
-
-    procedure WaitQueryC(ReverseQuery: Boolean; const OnQueryCall: TQueryCall); overload;
-    procedure WaitQueryM(ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod); overload;
-
-    procedure WaitQueryC(const OnQueryCall: TQueryCall); overload;
-    procedure WaitQueryM(const OnQueryMethod: TQueryMethod); overload;
-{$ELSE}
     procedure WaitQuery(ReverseQuery: Boolean;
       const OnQueryCall: TQueryCall;
       const OnQueryProc: TQueryProc;
@@ -599,26 +585,8 @@ type
     procedure WaitQueryC(const OnQueryCall: TQueryCall); overload;
     procedure WaitQueryP(const OnQueryProc: TQueryProc); overload;
     procedure WaitQueryM(const OnQueryMethod: TQueryMethod); overload;
-{$ENDIF}
-    //
+
     // background query
-{$IFDEF FPC}
-    function Query(const TaskTag: SystemString; const ReverseQuery: Boolean;
-      const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall;
-      const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
-
-    function QueryC(const TaskTag: SystemString; const ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask; overload;
-    function QueryM(const TaskTag: SystemString; const ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
-
-    function QueryC(const TaskTag: SystemString; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask; overload;
-    function QueryM(const TaskTag: SystemString; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
-
-    function QueryC(const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask; overload;
-    function QueryM(const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
-
-    function QueryC(const ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask; overload;
-    function QueryM(const ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
-{$ELSE}
     function Query(const TaskTag: SystemString; const ReverseQuery: Boolean;
       const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall;
       const OnQueryProc: TQueryProc; const OnQueryDoneProc: TQueryDoneProc;
@@ -639,7 +607,7 @@ type
     function QueryC(const ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask; overload;
     function QueryM(const ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask; overload;
     function QueryP(const ReverseQuery: Boolean; const OnQueryProc: TQueryProc; const OnQueryDoneProc: TQueryDoneProc): TQueryTask; overload;
-{$ENDIF}
+
     procedure WaitQueryThread; overload;
     procedure WaitQueryThread(waitTime: TTimeTick); overload;
 
@@ -1801,13 +1769,13 @@ end;
 
 function TQueryState.Cache: TDBCacheStream64;
 begin
-  Result := dbEng.GetCacheStream(StorePos);
+  Result := Eng.GetCacheStream(StorePos);
 end;
 
 function TQueryState.NextCache: TDBCacheStream64;
 begin
   if (QueryHnd <> nil) and (QueryHnd^.PositionID in [DB_Header_First, DB_Header_Medium]) then
-      Result := dbEng.GetCacheStream(QueryHnd^.NextHeader)
+      Result := Eng.GetCacheStream(QueryHnd^.NextHeader)
   else
       Result := nil;
 end;
@@ -1815,7 +1783,7 @@ end;
 function TQueryState.PrevCache: TDBCacheStream64;
 begin
   if (QueryHnd <> nil) and (QueryHnd^.PositionID in [DB_Header_Last, DB_Header_Medium]) then
-      Result := dbEng.GetCacheStream(QueryHnd^.PrevHeader)
+      Result := Eng.GetCacheStream(QueryHnd^.PrevHeader)
   else
       Result := nil;
 end;
@@ -2235,36 +2203,29 @@ begin
   RemoveQueue.Add(StorePos, nil, False);
 end;
 
-procedure TQueryThread.PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveCall);
+procedure TQueryThread.PostRemoveQueueC(StorePos: Int64; OnRemove: TRemoveCall);
 var
   p: PRemoveQueueData;
 begin
   new(p);
   p^.OnRemoveCall := OnRemove;
   p^.OnRemoveMethod := nil;
-{$IFNDEF FPC}
   p^.OnRemoveProc := nil;
-{$ENDIF FPC}
   RemoveQueue.Add(StorePos, p, False);
 end;
 
-procedure TQueryThread.PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveMethod);
+procedure TQueryThread.PostRemoveQueueM(StorePos: Int64; OnRemove: TRemoveMethod);
 var
   p: PRemoveQueueData;
 begin
   new(p);
   p^.OnRemoveCall := nil;
   p^.OnRemoveMethod := OnRemove;
-{$IFNDEF FPC}
   p^.OnRemoveProc := nil;
-{$ENDIF FPC}
   RemoveQueue.Add(StorePos, p, False);
 end;
 
-{$IFNDEF FPC}
-
-
-procedure TQueryThread.PostRemoveQueue(StorePos: Int64; OnRemove: TRemoveProc);
+procedure TQueryThread.PostRemoveQueueP(StorePos: Int64; OnRemove: TRemoveProc);
 var
   p: PRemoveQueueData;
 begin
@@ -2274,8 +2235,6 @@ begin
   p^.OnRemoveProc := OnRemove;
   RemoveQueue.Add(StorePos, p, False);
 end;
-{$ENDIF FPC}
-
 
 constructor TDBCacheStream64.Create;
 begin
@@ -2902,7 +2861,7 @@ end;
 function TDBStoreBase.QueryFirst(var qState: TQueryState): Boolean;
 begin
   Result := False;
-  qState.dbEng := Self;
+  qState.Eng := Self;
   qState.StorePos := -1;
   qState.Aborted := False;
   qState.TaskTag := '';
@@ -2941,7 +2900,7 @@ end;
 function TDBStoreBase.QueryLast(var qState: TQueryState): Boolean;
 begin
   Result := False;
-  qState.dbEng := Self;
+  qState.Eng := Self;
   qState.StorePos := -1;
   qState.Aborted := False;
   qState.TaskTag := '';
@@ -3021,59 +2980,6 @@ begin
   BuildStorePosArray(ReverseBuild, OutputPtr);
 end;
 
-{$IFDEF FPC}
-
-
-procedure TDBStoreBase.WaitQuery(ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryMethod: TQueryMethod);
-type
-  TDynamicQueryMethod = function(var qState: TQueryState): Boolean of object;
-var
-  itmSearHnd: THeader;
-  qState: TQueryState;
-  f, n: TDynamicQueryMethod;
-begin
-  qState.StorePos := -1;
-  qState.Aborted := False;
-  qState.QueryHnd := @itmSearHnd;
-  qState.index := 0;
-
-  if ReverseQuery then
-    begin
-      f := @QueryLast;
-      n := @QueryPrev;
-      qState.index := Count - 1;
-    end
-  else
-    begin
-      f := @QueryFirst;
-      n := @QueryNext;
-      qState.index := 0;
-    end;
-
-  if f(qState) then
-    begin
-      repeat
-        try
-          if Assigned(OnQueryCall) then
-              OnQueryCall(qState);
-          if Assigned(OnQueryMethod) then
-              OnQueryMethod(qState);
-        except
-        end;
-
-        if qState.Aborted then
-            Break;
-
-        if ReverseQuery then
-            dec(qState.index)
-        else
-            inc(qState.index);
-      until (not n(qState));
-    end;
-end;
-{$ELSE}
-
-
 procedure TDBStoreBase.WaitQuery(ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryProc: TQueryProc; const OnQueryMethod: TQueryMethod);
 type
   TDynamicQueryMethod = function(var qState: TQueryState): Boolean of object;
@@ -3088,14 +2994,14 @@ begin
 
   if ReverseQuery then
     begin
-      f := QueryLast;
-      n := QueryPrev;
+      f := {$IFDEF FPC}@{$ENDIF FPC}QueryLast;
+      n := {$IFDEF FPC}@{$ENDIF FPC}QueryPrev;
       qState.index := Count - 1;
     end
   else
     begin
-      f := QueryFirst;
-      n := QueryNext;
+      f := {$IFDEF FPC}@{$ENDIF FPC}QueryFirst;
+      n := {$IFDEF FPC}@{$ENDIF FPC}QueryNext;
       qState.index := 0;
     end;
 
@@ -3122,36 +3028,21 @@ begin
       until (not n(qState));
     end;
 end;
-{$ENDIF}
-
 
 procedure TDBStoreBase.WaitQueryC(ReverseQuery: Boolean; const OnQueryCall: TQueryCall);
 begin
-{$IFDEF FPC}
-  WaitQuery(ReverseQuery, OnQueryCall, nil);
-{$ELSE}
   WaitQuery(ReverseQuery, OnQueryCall, nil, nil);
-{$ENDIF}
 end;
 
 procedure TDBStoreBase.WaitQueryM(ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod);
 begin
-{$IFDEF FPC}
-  WaitQuery(ReverseQuery, nil, OnQueryMethod);
-{$ELSE}
   WaitQuery(ReverseQuery, nil, nil, OnQueryMethod);
-{$ENDIF}
 end;
-
-{$IFNDEF FPC}
-
 
 procedure TDBStoreBase.WaitQueryP(ReverseQuery: Boolean; const OnQueryProc: TQueryProc);
 begin
   WaitQuery(ReverseQuery, nil, OnQueryProc, nil);
 end;
-{$ENDIF}
-
 
 procedure TDBStoreBase.WaitQueryC(const OnQueryCall: TQueryCall);
 begin
@@ -3163,79 +3054,10 @@ begin
   WaitQueryM(False, OnQueryMethod);
 end;
 
-{$IFNDEF FPC}
-
-
 procedure TDBStoreBase.WaitQueryP(const OnQueryProc: TQueryProc);
 begin
   WaitQueryP(False, OnQueryProc);
 end;
-
-{$ENDIF}
-
-{$IFDEF FPC}
-
-
-function TDBStoreBase.Query(const TaskTag: SystemString; const ReverseQuery: Boolean;
-  const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall;
-  const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask;
-begin
-  Result := TQueryTask.Create;
-  Result.FDBEng := Self;
-  Result.FReverse := ReverseQuery;
-  Result.FTaskTag := TaskTag;
-  Result.FOnQueryCall := OnQueryCall;
-  Result.FOnQueryDoneCall := OnQueryDoneCall;
-  Result.FOnQueryMethod := OnQueryMethod;
-  Result.FOnQueryDoneMethod := OnQueryDoneMethod;
-
-  FQueryQueue.Add(Result);
-  FQueryThread.Paused := False;
-  FQueryThreadLastActivtedTime := Now;
-end;
-
-function TDBStoreBase.QueryC(const TaskTag: SystemString; const ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask;
-begin
-  Result := Query(TaskTag, ReverseQuery, OnQueryCall, OnQueryDoneCall, nil, nil);
-end;
-
-function TDBStoreBase.QueryM(const TaskTag: SystemString; const ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask;
-begin
-  Result := Query(TaskTag, ReverseQuery, nil, nil, OnQueryMethod, OnQueryDoneMethod);
-end;
-
-function TDBStoreBase.QueryC(const TaskTag: SystemString; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask;
-begin
-  Result := QueryC(TaskTag, False, OnQueryCall, OnQueryDoneCall);
-end;
-
-function TDBStoreBase.QueryM(const TaskTag: SystemString; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask;
-begin
-  Result := QueryM(TaskTag, False, OnQueryMethod, OnQueryDoneMethod);
-end;
-
-function TDBStoreBase.QueryC(const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask;
-begin
-  Result := QueryC('', OnQueryCall, OnQueryDoneCall);
-end;
-
-function TDBStoreBase.QueryM(const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask;
-begin
-  Result := QueryM('', OnQueryMethod, OnQueryDoneMethod);
-end;
-
-function TDBStoreBase.QueryC(const ReverseQuery: Boolean; const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall): TQueryTask;
-begin
-  Result := QueryC('', ReverseQuery, OnQueryCall, OnQueryDoneCall);
-end;
-
-function TDBStoreBase.QueryM(const ReverseQuery: Boolean; const OnQueryMethod: TQueryMethod; const OnQueryDoneMethod: TQueryDoneMethod): TQueryTask;
-begin
-  Result := QueryM('', ReverseQuery, OnQueryMethod, OnQueryDoneMethod);
-end;
-
-{$ELSE}
-
 
 function TDBStoreBase.Query(const TaskTag: SystemString; const ReverseQuery: Boolean;
   const OnQueryCall: TQueryCall; const OnQueryDoneCall: TQueryDoneCall;
@@ -3317,9 +3139,6 @@ function TDBStoreBase.QueryM(const OnQueryMethod: TQueryMethod; const OnQueryDon
 begin
   Result := QueryM('', OnQueryMethod, OnQueryDoneMethod);
 end;
-
-{$ENDIF}
-
 
 procedure TDBStoreBase.WaitQueryThread;
 begin
